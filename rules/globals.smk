@@ -18,10 +18,20 @@ prune_step = config.get('prune_step', 100)
 prune_r2 = config.get('prune_r2', 0.1)
 geno_pcs = config.get('geno_pcs', 3)
 pheno_pcs = config.get('pheno_pcs', 5)
-cis_window = config.get('cis_window', 1000000)
+cis_window = config.get('cis_window', 100000)
 fdr = config.get('fdr', 0.05)
 plink_threads = config.get('plink_threads', 4)
 normalization = config.get('normalization', 'quantile_int')
+# Conda environments (used with --use-conda): a YAML file or the name of an existing environment
+conda_env = config.get('conda_env', 'envs/environment.yml')
+tensorqtl_env = config.get('tensorqtl_env', conda_env)
+
+# Optional: regress host-gene expression out of editing levels (Li et al. 2022)
+expression_covariate = config.get('expression_covariate', False)
+gene_tpm = config.get('gene_tpm', '')
+gene_annotation = config.get('gene_annotation', 'src/edit_site_gene_annotation.tsv.gz')
+_bed_prefix = f"intermediate/edit_matrix/{{tissue}}/{{tissue}}.edMat.{min_cov}cov.{min_sam}samps.noXYM.txt"
+pheno_bed = _bed_prefix + (".qqnorm.expr_resid.bed.gz" if expression_covariate else ".qqnorm.bed.gz")   # used by covariates + tensorQTL
 
 
 # Chrs

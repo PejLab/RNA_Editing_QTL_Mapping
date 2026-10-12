@@ -1,0 +1,76 @@
+# Snakemake profile for SLURM clusters: every pipeline step runs as its own SLURM job, and the tensorQTL
+# steps run on a GPU partition. Needs snakemake-executor-plugin-slurm in the environment you run Snakemake from.
+#
+# Before use, replace the placeholders below with your cluster's values:
+#   CPU_PARTITION, GPU_PARTITION, ACCOUNT
+# and set tensorqtl_env in your config to an environment with a CUDA build of PyTorch (otherwise tensorQTL
+# runs on the CPU of the GPU node).
+#
+#   snakemake --profile profiles/slurm -n                 # dry run
+#   sbatch profiles/slurm/run_pipeline.sbatch             # run (Snakemake itself as a long, small job)
+
+executor: slurm
+
+# ---- Usage limits: adjust to your share of the cluster ----
+jobs: 100                         # max pipeline jobs submitted at once
+resources:
+  tensorqtl_slots: 4              # max tensorQTL (GPU) jobs at once
+#  mem_mb: 1000000                # optional: max total memory of running jobs
+# ----------------------------------------------------------
+use-conda: true                   # rules use conda_env / tensorqtl_env from the config
+latency-wait: 60
+rerun-incomplete: true
+keep-going: true
+printshellcmds: true
+max-jobs-per-timespan: "20/1s"
+max-status-checks-per-second: 5
+
+default-resources:
+  slurm_partition: "CPU_PARTITION"
+  slurm_account: "ACCOUNT"
+  runtime: "4h"
+  mem_mb: 8000
+
+# Memory and run times below fit GTEx (up to ~700 samples per tissue, 2.8 million editing sites).
+set-resources:
+  query_editing_level:            # one per BAM, typically 5-25 min
+    mem_mb: 6000
+    runtime: "2h"
+  shared_sample_site:             # one per tissue, up to a few hours for large tissues
+    mem_mb: 128000
+    runtime: "24h"
+  prep_phen:
+    mem_mb: 32000
+  combine_to_bed:
+    mem_mb: 16000
+  regress_expression:             # reads the tissue's columns of the gene TPM table
+    mem_mb: 16000
+  preparing_genotype:             # plink2, threads = plink_threads
+    mem_mb: 32000
+  pruning_for_covar:
+    mem_mb: 16000
+  covariates:
+    mem_mb: 32000
+  tensorqtl_cis:
+    slurm_partition: "GPU_PARTITION"
+    gres: "gpu:1"
+    cpus_per_task: 8
+    mem_mb: 64000
+    runtime: "12h"
+  tensorqtl_cis_independent:
+    slurm_partition: "GPU_PARTITION"
+    gres: "gpu:1"
+    cpus_per_task: 8
+    mem_mb: 64000
+    runtime: "12h"
+  tensorqtl_cis_nominal:
+    slurm_partition: "GPU_PARTITION"
+    gres: "gpu:1"
+    cpus_per_task: 8
+    mem_mb: 64000
+    runtime: "12h"
+  tensorqtl_all_signif:
+    mem_mb: 64000
+  tensorqtl_all_cis_pvals:        # collects all nominal pairs of a tissue (up to ~200 million rows)
+    mem_mb: 160000
+    runtime: "8h"

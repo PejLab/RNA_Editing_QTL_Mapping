@@ -25,7 +25,7 @@ rule index_ref_genome:
     output:
         config["ref_genome_fasta"] + ".fai"
     conda:
-        "envs/environment.yml"
+        conda_env
     shell:
         "samtools faidx {input}"
 
@@ -41,7 +41,7 @@ rule query_editing_level:
     log:
         "logs/query_editing_level/{tissue}_{sample}.log"
     conda:
-        "envs/environment.yml"
+        conda_env
     shell:
         """
         mkdir -p intermediate/edit_level/{wildcards.tissue} logs/query_editing_level/
@@ -67,7 +67,7 @@ rule shared_sample_site:
     log:
         "logs/shared_sample_site/{tissue}.shared_sample_site.log"
     conda:
-        "envs/environment.yml"
+        conda_env
     shell:
         """
         mkdir -p intermediate/edit_matrix/{wildcards.tissue} logs/shared_sample_site/
@@ -100,7 +100,7 @@ rule prep_phen:
     log:
         f"logs/prep_phen/{{tissue}}.log"
     conda:
-        "envs/environment.yml"
+        conda_env
     shell:
         """
         mkdir -p logs/prep_phen/
@@ -125,7 +125,7 @@ rule combine_to_bed:
     log:
         "logs/combine_to_bed/{tissue}.log"
     conda:
-        "envs/environment.yml"
+        conda_env
     shell:
         """
         mkdir -p logs/combine_to_bed/
@@ -134,6 +134,38 @@ rule combine_to_bed:
                 --tissue {params.tissue} \
                 --min_coverage {params.min_cov} \
                 --min_samples {params.min_sam} &> {log}
+        """
+
+
+rule regress_expression:
+    """Regress host-gene expression out of each editing site's levels (optional: expression_covariate)."""
+    input:
+        bed = f"intermediate/edit_matrix/{{tissue}}/{{tissue}}.edMat.{min_cov}cov.{min_sam}samps.noXYM.txt.qqnorm.bed.gz",
+        tpm = gene_tpm,
+        annotation = config["annotation_file"],
+        genes = gene_annotation
+    output:
+        bed = f"intermediate/edit_matrix/{{tissue}}/{{tissue}}.edMat.{min_cov}cov.{min_sam}samps.noXYM.txt.qqnorm.expr_resid.bed.gz",
+        index = f"intermediate/edit_matrix/{{tissue}}/{{tissue}}.edMat.{min_cov}cov.{min_sam}samps.noXYM.txt.qqnorm.expr_resid.bed.gz.tbi"
+    params:
+        bed = lambda wildcards, output: output.bed[:-3],
+        norm = normalization
+    log:
+        "logs/regress_expression/{tissue}.log"
+    conda:
+        conda_env
+    shell:
+        """
+        python3 scripts/regress_expression.py \
+            --bed {input.bed} \
+            --tpm {input.tpm} \
+            --annotation {input.annotation} \
+            --tissue {wildcards.tissue} \
+            --gene_annotation {input.genes} \
+            --norm {params.norm} \
+            --output {params.bed} &> {log}
+        bgzip -f {params.bed}
+        tabix -f -p bed {output.bed}
         """
 
 
@@ -154,7 +186,7 @@ rule preparing_genotype:
     log:
         "logs/preparing_genotype/{tissue}.log"
     conda:
-        "envs/environment.yml"
+        conda_env
     shell:
         """
         mkdir -p $(dirname {output[0]}) logs/preparing_genotype/
@@ -198,7 +230,7 @@ rule pruning_for_covar:
     log:
         "logs/pruning_for_covar/{tissue}.log"
     conda:
-        "envs/environment.yml"
+        conda_env
     shell:
         """
         mkdir -p logs/pruning_for_covar/
@@ -225,7 +257,7 @@ rule pruning_for_covar:
 rule covariates:
     input:
         vcf_pruned = f"data/genotype/{{tissue}}/{{tissue}}.geno.pruned.vcf.gz",
-        bed = f"intermediate/edit_matrix/{{tissue}}/{{tissue}}.edMat.{min_cov}cov.{min_sam}samps.noXYM.txt.qqnorm.bed.gz",
+        bed = pheno_bed,
         annotation_file = config["annotation_file"],
         subject_covariates = config["subject_covariates"]
     output:
@@ -237,7 +269,7 @@ rule covariates:
     log:
         "logs/covariates/{tissue}.log"
     conda:
-        "envs/environment.yml"
+        conda_env
     shell:
         """
         python3 scripts/subset_annotation.py \
@@ -258,8 +290,8 @@ rule covariates:
 rule tensorqtl_cis:
     input:
         geno = multiext("data/genotype/{tissue}/{tissue}.geno.clean.maf" + str(maf), ".bed", ".bim", ".fam"),
-        bed = f"intermediate/edit_matrix/{{tissue}}/{{tissue}}.edMat.{min_cov}cov.{min_sam}samps.noXYM.txt.qqnorm.bed.gz",
-        bedi = f"intermediate/edit_matrix/{{tissue}}/{{tissue}}.edMat.{min_cov}cov.{min_sam}samps.noXYM.txt.qqnorm.bed.gz.tbi",
+        bed = pheno_bed,
+        bedi = pheno_bed + ".tbi",
         covar = f"data/genotype/{{tissue}}/{{tissue}}.covars.txt",
     output:
         out = f"results/{{tissue}}/{{tissue}}.cis_edQTLs.txt.gz"
@@ -271,7 +303,7 @@ rule tensorqtl_cis:
     log:
         "logs/tensorqtl_cis/{tissue}.log"
     conda:
-        "envs/environment.yml"
+        tensorqtl_env
     shell:
         """
         mkdir -p results/{wildcards.tissue} logs/tensorqtl_cis/
@@ -288,8 +320,8 @@ rule tensorqtl_cis:
 rule tensorqtl_cis_independent:
     input:
         geno = multiext("data/genotype/{tissue}/{tissue}.geno.clean.maf" + str(maf), ".bed", ".bim", ".fam"),
-        bed = f"intermediate/edit_matrix/{{tissue}}/{{tissue}}.edMat.{min_cov}cov.{min_sam}samps.noXYM.txt.qqnorm.bed.gz",
-        bedi = f"intermediate/edit_matrix/{{tissue}}/{{tissue}}.edMat.{min_cov}cov.{min_sam}samps.noXYM.txt.qqnorm.bed.gz.tbi",
+        bed = pheno_bed,
+        bedi = pheno_bed + ".tbi",
         covar = f"data/genotype/{{tissue}}/{{tissue}}.covars.txt",
         cis_out = f"results/{{tissue}}/{{tissue}}.cis_edQTLs.txt.gz"
     output:
@@ -302,7 +334,7 @@ rule tensorqtl_cis_independent:
     log:
         "logs/tensorqtl_cis_independent/{tissue}.log"
     conda:
-        "envs/environment.yml"
+        tensorqtl_env
     shell:
         """
         mkdir -p logs/tensorqtl_cis_independent/
@@ -321,8 +353,8 @@ rule tensorqtl_cis_nominal:
     """Get summary statistics for all tested cis-window SNPs per gene."""
     input:
         geno = multiext("data/genotype/{tissue}/{tissue}.geno.clean.maf" + str(maf), ".bed", ".bim", ".fam"),
-        bed = f"intermediate/edit_matrix/{{tissue}}/{{tissue}}.edMat.{min_cov}cov.{min_sam}samps.noXYM.txt.qqnorm.bed.gz",
-        bedi = f"intermediate/edit_matrix/{{tissue}}/{{tissue}}.edMat.{min_cov}cov.{min_sam}samps.noXYM.txt.qqnorm.bed.gz.tbi",
+        bed = pheno_bed,
+        bedi = pheno_bed + ".tbi",
         covar = f"data/genotype/{{tissue}}/{{tissue}}.covars.txt"
     output:
         expand("results/{{tissue}}/nominal/{{tissue}}.cis_qtl_pairs.chr{chrn}.parquet", chrn=range(1, 23))
@@ -336,7 +368,7 @@ rule tensorqtl_cis_nominal:
     log:
         "logs/tensorqtl_cis_nominal/{tissue}.log"
     conda:
-        "envs/environment.yml"
+        tensorqtl_env
     shell:
         """
         mkdir -p {params.outdir}
@@ -368,7 +400,7 @@ rule tensorqtl_all_signif:
     log:
         "logs/tensorqtl_all_signif/{tissue}.log"
     conda:
-        "envs/environment.yml"
+        conda_env
     shell:
         """
         mkdir -p logs/tensorqtl_all_signif
@@ -395,7 +427,7 @@ rule tensorqtl_all_cis_pvals:
     log:
         "logs/tensorqtl_all_cis_pvals/{tissue}.log"
     conda:
-        "envs/environment.yml"
+        conda_env
     shell:
         """
         mkdir -p logs/tensorqtl_all_cis_pvals

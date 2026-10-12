@@ -37,7 +37,7 @@ geno_pcs: 3
 pheno_pcs: 5
 
 # tensorQTL cis window (bp) and FDR for extracting all significant pairs
-cis_window: 1000000
+cis_window: 100000
 fdr: 0.05
 
 # Threads per plink2 job
@@ -51,3 +51,15 @@ plink_threads: 4
 #                 As in LeafCutter and Li et al. 2022, "RNA editing underlies genetic risk of common inflammatory
 #                 diseases" (GTEx_edQTL); keeps each site's distribution shape.
 normalization: quantile_int
+
+# Conda environments, used with --use-conda: a YAML file or the name of an existing environment.
+# tensorqtl_env should have a CUDA build of PyTorch to run tensorQTL on a GPU.
+conda_env: "envs/environment.yml"
+tensorqtl_env: "envs/environment.yml"
+
+# Regress host-gene expression out of editing levels before mapping (as in Li et al. 2022).
+# Needs a gene TPM table with sample IDs as columns (GTEx v8: GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_gene_tpm.gct.gz,
+# or the same table in feather format, .ft) and the site-to-gene table made by scripts/annotate_edit_sites.R.
+expression_covariate: false
+gene_tpm: "src/GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_gene_tpm.gct.gz"
+gene_annotation: "src/edit_site_gene_annotation.tsv.gz"
